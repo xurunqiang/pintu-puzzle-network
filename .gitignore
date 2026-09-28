@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+checkpoints/
+visualizations/
+data/
+.idea/
+.vscode/
+original_source_manifest.json
