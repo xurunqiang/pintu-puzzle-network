@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--total_epochs", type=int, default=100, help="总轮数 (阶段 1 + 阶段 2)")
     parser.add_argument("--grid_size", type=int, default=5, choices=[3, 5, 7], help="拼图网格大小")
     parser.add_argument("--pool_size", type=int, default=8192, help="候选块池大小")
+    parser.add_argument("--cross_pool_only", action='store_true', help="消融：不保证原图碎片入池，沿用纯跨图候选")
     parser.add_argument("--consumed_inventory", action="store_true", default=True, help="是否使用批次共享库存消耗模式")
     parser.add_argument("--no_consumed_inventory", dest="consumed_inventory", action="store_false", help="使用不消耗库存模式 (带重复惩罚)")
     parser.add_argument("--inventory_scope", choices=['batch', 'image'], default='batch', help="消耗库存范围：批次共享或每张图独立")
@@ -284,6 +285,8 @@ def _evaluate_validation_loss(model, momentum_model, loss_fn, val_loader, phase,
 
 
 def train_pintu_v2(args):
+    if not args.cross_pool_only and not args.allow_self_patches:
+        raise ValueError('默认保证原图碎片可选；--exclude_self_patches 需要同时指定 --cross_pool_only')
     if args.feature_refresh_steps < 1 or not 0 <= args.momentum_decay < 1:
         raise ValueError('刷新间隔必须为正整数，momentum_decay 必须在 [0, 1)')
     if not args.quick_test and not 0 <= args.warmup_epochs < args.total_epochs:
@@ -295,11 +298,11 @@ def train_pintu_v2(args):
     resume = None
     if args.resume:
         resume = torch.load(args.resume, map_location='cpu', weights_only=False)
-        if resume.get('implementation_version') != 3:
+        if resume.get('implementation_version') != 4:
             raise ValueError('续训需要本优化副本生成的检查点；旧版权重请用于单独评估')
         for name in ('grid_size', 'batch_size', 'seed', 'consumed_inventory', 'inventory_scope',
                      'allow_self_patches', 'feature_refresh_steps', 'momentum_decay',
-                     'total_epochs', 'warmup_epochs', 'quick_test', 'lr', 'weight_decay'):
+                     'total_epochs', 'warmup_epochs', 'quick_test', 'lr', 'weight_decay', 'cross_pool_only'):
             if resume['args'].get(name) != getattr(args, name):
                 raise ValueError(f'续训参数 {name} 必须与检查点一致')
     torch.manual_seed(args.seed)
@@ -325,6 +328,10 @@ def train_pintu_v2(args):
 
     pool_size = max(128, (args.batch_size + 1) * (args.grid_size ** 2 - 1)) if args.quick_test else args.pool_size
     required_pool = (args.batch_size if args.inventory_scope == 'batch' else 1) * (args.grid_size ** 2 - 1)
+    if not args.cross_pool_only:
+        required_pool = args.batch_size * (args.grid_size ** 2 - 1)
+        if pool_size < required_pool:
+            raise ValueError(f'包含本批全部原图碎片至少需要 {required_pool} 个候选槽位')
     if args.consumed_inventory and pool_size < required_pool:
         raise ValueError(f'{args.inventory_scope} 库存模式至少需要 {required_pool} 个候选')
 
@@ -347,7 +354,7 @@ def train_pintu_v2(args):
     print(f"✓ 候选池无泄漏验证通过! 来源图片数: {len(pool_source_ids)}, 与验证集完全无交集。")
 
     # 3. 模型与动量分支构建
-    model_cfg = ModelConfig(grid_size=args.grid_size)
+    model_cfg = ModelConfig(grid_size=args.grid_size, include_source_patches=not args.cross_pool_only)
     model = PintuModel(cfg=model_cfg).to(device)
 
     momentum_model = copy.deepcopy(model).to(device)
@@ -546,7 +553,7 @@ def train_pintu_v2(args):
 
         # 打包保存状态
         ckpt_meta = {
-            "implementation_version": 3,
+            "implementation_version": 4,
             "best_warmup_val_loss": min(best_warmup_val_loss, val_loss) if phase == 'warmup' else best_warmup_val_loss,
             "best_full_val_loss": min(best_full_val_loss, val_loss) if phase == 'full' else best_full_val_loss,
             "rng_state": torch.random.get_rng_state(),

@@ -13,7 +13,7 @@ from pintu_v2.models.pintu_model import PintuModel
 
 def load_model_checkpoint(path, device):
     checkpoint = torch.load(path, map_location='cpu', weights_only=False)
-    if checkpoint.get('implementation_version') != 3:
+    if checkpoint.get('implementation_version') != 4:
         warnings.warn('正在加载旧版权重：本副本改进了检索和接缝评分，输出不保证复现旧版；正式比较建议重新训练。')
     state = checkpoint.get('model_state', checkpoint)
     config = dict(checkpoint.get('model_config', {}))
@@ -33,6 +33,13 @@ def restore_pool(checkpoint, model, train_dataset, device):
         pool = PatchPool.from_state_dict(checkpoint['pool_state'], device=device)
         if pool.grid_size != model.grid_size:
             raise ValueError('候选池与模型网格大小不一致')
+        if model.cfg.include_source_patches and pool._content_snapshot is None:
+            warnings.warn('旧候选池没有编码器快照；统一刷新基础和注入碎片的特征，旧结果可能变化。')
+            encoder_model = model
+            if 'momentum_model_state' in checkpoint:
+                encoder_model = copy.deepcopy(model)
+                encoder_model.load_state_dict(checkpoint['momentum_model_state'])
+            pool.refresh_features(encoder_model.content_encoder, encoder_model.edge_encoder)
     else:
         warnings.warn('旧检查点未保存候选缓存，将用保存的种子和编码器重建；无法保证复现旧缓存。')
         args = checkpoint.get('args', {})

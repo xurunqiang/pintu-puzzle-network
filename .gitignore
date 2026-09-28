@@ -5,7 +5,7 @@ __pycache__/
 venv/
 checkpoints/
 visualizations/
-data/
+/data/
 .idea/
 .vscode/
 original_source_manifest.json

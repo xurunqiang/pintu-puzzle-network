@@ -128,7 +128,7 @@ def test_masked_seam_normalization_matches_unmasked():
 
 
 def test_validation_and_evaluation_honor_reuse_mode():
-    model = PintuModel(ModelConfig(grid_size=3)).train()
+    model = PintuModel(ModelConfig(grid_size=3, include_source_patches=False)).train()
     pool = make_pool(model, size=4)  # 共享消耗无法组装，复用模式应正常通过。
     teacher = copy.deepcopy(model).eval()
     images = TinyImages(2).images

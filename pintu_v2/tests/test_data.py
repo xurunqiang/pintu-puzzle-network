@@ -3,6 +3,7 @@
 """
 
 import unittest
+from unittest.mock import patch
 import torch
 from pintu_v2.data.patch_slicer import PatchSlicer
 from pintu_v2.data.patch_pool import PatchPool, BatchInventory
@@ -37,7 +38,10 @@ class TestDataComponents(unittest.TestCase):
 
     def test_patch_pool_subset_isolation(self):
         """测试候选池严格从 train_subset 构建，且与验证集完全无交集 (Item 1)"""
-        tl, vl, _ = get_cifar_dataloaders(batch_size=8, seed=42)
+        samples = [(torch.zeros(3, 32, 32), i % 10) for i in range(20)]
+        with patch('pintu_v2.data.cifar_dataset.torchvision.datasets.CIFAR10', return_value=samples):
+            tl, vl, _ = get_cifar_dataloaders(batch_size=8, seed=42,
+                                            train_val_split=16, num_workers=0)
         train_subset = tl.dataset
         val_subset = vl.dataset
 

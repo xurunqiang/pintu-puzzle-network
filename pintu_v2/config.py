@@ -37,6 +37,7 @@ class SlicerConfig:
 @dataclass
 class ModelConfig:
     grid_size: int = 5                  # 默认 5x5 网格
+    include_source_patches: bool = True # 每次组装保证候选中含种子视图的全部非中心块
     content_dim: int = 96               # 96 维内容特征
     edge_dim: int = 32                  # 单个边缘 32 维特征
     local_heads: int = 4                # 局部 Transformer 头数

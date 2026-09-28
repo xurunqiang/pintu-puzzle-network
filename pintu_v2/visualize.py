@@ -153,7 +153,7 @@ def visualize_puzzle_results(args):
         sel_idx = step_info["selected_idx"][sample_idx].item()
         
         # 填入挑选块
-        chosen_p = tensor_to_img(pool.patches[sel_idx])
+        chosen_p = tensor_to_img(puzzle_out['candidate_pool'].patches[sel_idx])
         curr_canvas[tr*P:(tr+1)*P, tc*P:(tc+1)*P] = chosen_p
 
         if step_num in key_steps:

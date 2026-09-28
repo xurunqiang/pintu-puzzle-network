@@ -153,6 +153,10 @@ class PintuModel(nn.Module):
             raise ValueError('候选池与模型网格大小不一致')
         if inventory_scope not in ('batch', 'image'):
             raise ValueError('inventory_scope 必须为 batch 或 image')
+        if self.cfg.include_source_patches:
+            if not allow_self_patches:
+                raise ValueError('必须包含原图碎片模式不能排除同源块；跨图消融请设置 include_source_patches=False')
+            pool = pool.with_source_patches(seed_imgs, seed_img_ids)
         required = (B if inventory_scope == 'batch' else 1) * (g * g - 1)
         if consumed_inventory and pool.pool_size < required:
             raise ValueError(f'{inventory_scope} 库存至少需要 {required} 个候选，当前只有 {pool.pool_size}')
@@ -381,6 +385,7 @@ class PintuModel(nn.Module):
             "assembled_masks": assembled_masks,
             "grid_features": grid_features,
             "trajectory": trajectory,
+            "candidate_pool": pool if record_trajectory else None,
             "usage_counts": inventory.hard_usage_counts,
             "repetition_loss": inventory.get_repetition_loss(),
             "fusion_count": fusion_count,
